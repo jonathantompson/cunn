@@ -1,13 +1,3 @@
-#include "luaT.h"
-#include "THC.h"
-
-#include <thrust/transform.h>
-#include <thrust/device_ptr.h>
-#include <thrust/reduce.h>
-#include <thrust/transform_reduce.h>
-#include <thrust/functional.h>
-
-#define CUDA_MAX_THREADS 1024   // this is safe, in reality 256 is our limit
 
 //for each input plane there will be an X-offset and a Y-offset plane (i.e. output_n = 2*input_n)
 
@@ -249,7 +239,7 @@ static const struct luaL_Reg cunn_SSMPoolingOffsets__ [] = {
   {NULL, NULL}
 };
 
-void cunn_SSMPoolingOffsets_init(lua_State *L)
+static void cunn_SSMPoolingOffsets_init(lua_State *L)
 {
   luaT_pushmetatable(L, "torch.CudaTensor");
   luaT_registeratname(L, cunn_SSMPoolingOffsets__, "nn");
