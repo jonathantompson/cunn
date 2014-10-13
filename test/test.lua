@@ -498,6 +498,76 @@ function cunntest.Max_backward()
    mytester:assertlt(error:abs():max(), precision_backward, 'error on state (backward) ')
 end
 
+function cunntest.Min_forward()
+   local size1 = math.random(1,1000)
+   local size2 = math.random(2,100)
+
+   local tm = {}
+   local title = string.format('Min forward %dx%d', size1, size2)
+   times[title] = tm
+
+   local input = torch.randn(size1,size2)
+   local sconv = nn.Min(2)
+   local groundtruth = sconv:forward(input)
+   local a = torch.Timer()
+   for i = 1,nloop do
+      groundtruth = sconv:forward(input)
+   end
+   tm.cpu = a:time().real
+
+   input = input:cuda()
+   local gconv = nn.Min(2):cuda()
+   local rescuda = gconv:forward(input)
+   a:reset()
+   for i = 1,nloop do
+      rescuda = gconv:forward(input)
+   end
+   cutorch.synchronize()
+   tm.gpu = a:time().real
+
+   local error = rescuda:float() - groundtruth
+   mytester:assertlt(error:abs():max(), precision_forward, 'error on state (forward) ')
+
+   local error = gconv.indices:float() - sconv.indices
+   mytester:assertlt(error:abs():max(), 1e-8, 'error on indices ')
+end
+
+function cunntest.Min_backward()
+   local size1 = math.random(1,1000)
+   local size2 = math.random(2,100)
+
+   local tm = {}
+   local title = string.format('Min.backward %dx%d', size1, size2)
+   times[title] = tm
+
+   local input = torch.randn(size1,size2)
+   local gradOutput = torch.randn(size1)
+   local sconv = nn.Min(2)
+   sconv:forward(input)
+   local groundgrad = sconv:backward(input, gradOutput)
+   local a = torch.Timer()
+   for i = 1,nloop do
+      groundgrad = sconv:backward(input, gradOutput)
+   end
+   tm.cpu = a:time().real
+
+   input = input:cuda()
+   gradOutput = gradOutput:cuda()
+   local gconv = sconv:clone():cuda()
+   gconv:forward(input)
+   local rescuda = gconv:backward(input, gradOutput)
+   a:reset()
+   for i = 1,nloop do
+      rescuda = gconv:backward(input, gradOutput)
+   end
+   cutorch.synchronize()
+   tm.gpu = a:time().real
+
+   local error = rescuda:float() - groundgrad
+
+   mytester:assertlt(error:abs():max(), precision_backward, 'error on state (backward) ')
+end
+
 function cunntest.Sum_forward()
    local size1 = math.random(1,1000)
    local size2 = math.random(2,100)
@@ -632,215 +702,11 @@ function cunntest.Mean_backward()
    mytester:assertlt(error:abs():max(), precision_backward, 'error on state (backward) ')
 end
 
-function cunntest.SpatialConvolution_forward()
-   local from = math.random(1,64) -- inputFrameSize
-   local to = math.random(1,64) -- outputFrameSize
-   local ki = math.random(3,15) -- kernel widths 
-   local kj = math.random(3,15) 
-   local si = math.random(1,2) -- kernel strides
-   local sj = math.random(1,2)
-   local outi = math.random(1,256) -- nOutputFrames
-   local outj = math.random(1,256) 
-   local ini = (outi-1)*si+ki -- nInputFrames
-   local inj = (outj-1)*sj+kj
-
-   local tm = {}
-   local title = string.format('SpatialConvolution.forward %dx%dx%d o %dx%d -> %dx%dx%d [s: %dx%d]', 
-                               from, inj, ini, kj, ki, to, outj, outi, sj, si)
-   times[title] = tm
-
-   local input = torch.randn(from,inj,ini)
-   local sconv = nn.SpatialConvolution(from,to,ki,kj,si,sj)
-   local groundtruth = sconv:forward(input)
-   local a = torch.Timer()
-   for i = 1,nloop do
-      groundtruth = sconv:forward(input)
-   end
-   tm.cpu = a:time().real
-
-   input = input:cuda()
-   local gconv = nn.SpatialConvolution(from,to,ki,kj,si,sj):cuda()
-   gconv.weight = sconv.weight:cuda()
-   gconv.bias = sconv.bias:cuda()
-   local rescuda = gconv:forward(input)
-   a:reset()
-   for i = 1,nloop do
-      rescuda = gconv:forward(input)
-   end
-   cutorch.synchronize()
-   tm.gpu = a:time().real
-
-   local error = rescuda:float() - groundtruth
-   mytester:assertlt(error:abs():max(), precision_forward, 'error on state (forward) ')
-end
-
-function cunntest.SpatialConvolution_forward_batch()
-   local bs = math.random(4,16)
-   local from = math.random(1,32)
-   local to = math.random(1,64)
-   local ki = math.random(3,15)
-   local kj = math.random(3,15)
-   local si = math.random(1,2)
-   local sj = math.random(1,2)
-   local outi = math.random(1,64)
-   local outj = math.random(1,64)
-   local ini = (outi-1)*si+ki
-   local inj = (outj-1)*sj+kj
-
-   local tm = {}
-   local title = string.format('SpatialConvolution.forward %dx%dx%dx%d o %dx%d -> %dx%dx%dx%d [s: %dx%d]', 
-                               bs, from, inj, ini, kj, ki, bs, to, outj, outi, sj, si)
-   times[title] = tm
-
-   local input = torch.randn(bs,from,inj,ini)
-   local sconv = nn.SpatialConvolution(from,to,ki,kj,si,sj)
-   local groundtruth = sconv:forward(input)
-   local a = torch.Timer()
-   for i = 1,nloop do
-      groundtruth = sconv:forward(input)
-   end
-   tm.cpu = a:time().real
-
-   input = input:cuda()
-   local gconv = nn.SpatialConvolution(from,to,ki,kj,si,sj):cuda()
-   gconv.weight = sconv.weight:cuda()
-   gconv.bias = sconv.bias:cuda()
-   local rescuda = gconv:forward(input)
-   a:reset()
-   for i = 1,nloop do
-      rescuda = gconv:forward(input)
-   end
-   cutorch.synchronize()
-   tm.gpu = a:time().real
-
-   local error = rescuda:float() - groundtruth
-   mytester:assertlt(error:abs():max(), precision_forward, 'error on state (forward) ')
-end
-
-function cunntest.SpatialConvolution_backward()
-   local from = math.random(1,64)
-   local to = math.random(1,64)
-   local ki = math.random(3,13)
-   local kj = math.random(3,13)
-   local si = 1 --math.random(1,2)
-   local sj = 1 --math.random(1,2)
-   local outi = math.random(8,128)
-   local outj = math.random(8,128)
-   local ini = (outi-1)*si+ki
-   local inj = (outj-1)*sj+kj
-
-   local tm = {}
-   local title = string.format('SpatialConvolution.backward %dx%dx%d o %dx%d -> %dx%dx%d', 
-                               from, inj, ini, kj, ki, to, outj, outi)
-   times[title] = tm
-
-   local input = torch.randn(from,inj,ini)
-   local gradOutput = torch.randn(to,outj,outi)
-   local sconv = nn.SpatialConvolution(from,to,ki,kj,si,sj)
-   sconv:forward(input)
-   sconv:zeroGradParameters()
-   local groundgrad = sconv:backward(input, gradOutput)
-   local a = torch.Timer()
-   for i = 1,nloop do
-      sconv:zeroGradParameters()
-      groundgrad = sconv:backward(input, gradOutput)
-   end
-   local groundweight = sconv.gradWeight
-   local groundbias = sconv.gradBias
-   tm.cpu = a:time().real
-
-   input = input:cuda()
-   gradOutput = gradOutput:cuda()
-   local gconv = nn.SpatialConvolution(from,to,ki,kj,si,sj):cuda()
-   gconv.weight = sconv.weight:cuda()
-   gconv.bias = sconv.bias:cuda()
-   gconv:forward(input)
-   gconv:zeroGradParameters()
-   local rescuda = gconv:backward(input, gradOutput)
-   a:reset()
-   for i = 1,nloop do
-      gconv:zeroGradParameters()
-      rescuda = gconv:backward(input, gradOutput)
-   end
-   local weightcuda = gconv.gradWeight
-   local biascuda = gconv.gradBias
-   cutorch.synchronize()
-   tm.gpu = a:time().real
-
-   local error = rescuda:float() - groundgrad
-   local werror = weightcuda:float() - groundweight
-   local berror = biascuda:float() - groundbias
-
-   mytester:assertlt(error:abs():max(), precision_backward, 'error on state (backward) ')
-   mytester:assertlt(werror:abs():max(), precision_backward, 'error on weight (backward) ')
-   mytester:assertlt(berror:abs():max(), precision_backward, 'error on bias (backward) ')
-end
-
-function cunntest.SpatialConvolution_backward_batch()
-   local bs = math.random(4,10)
-   local from = math.random(1,32)
-   local to = math.random(1,64)
-   local ki = math.random(3,13)
-   local kj = math.random(3,13)
-   local si = 1 --math.random(1,2)
-   local sj = 1 --math.random(1,2)
-   local outi = math.random(8,64)
-   local outj = math.random(8,64)
-   local ini = (outi-1)*si+ki
-   local inj = (outj-1)*sj+kj
-
-   local tm = {}
-   local title = string.format('SpatialConvolution.backward %dx%dx%dx%d o %dx%d -> %dx%dx%dx%d', 
-                               bs, from, inj, ini, kj, ki, bs, to, outj, outi)
-   times[title] = tm
-
-   local input = torch.randn(bs,from,inj,ini)
-   local gradOutput = torch.randn(bs,to,outj,outi)
-   local sconv = nn.SpatialConvolution(from,to,ki,kj,si,sj)
-   sconv:forward(input)
-   sconv:zeroGradParameters()
-   local groundgrad = sconv:backward(input, gradOutput)
-   local a = torch.Timer()
-   for i = 1,nloop do
-      sconv:zeroGradParameters()
-      groundgrad = sconv:backward(input, gradOutput)
-   end
-   local groundweight = sconv.gradWeight
-   local groundbias = sconv.gradBias
-   tm.cpu = a:time().real
-
-   input = input:cuda()
-   gradOutput = gradOutput:cuda()
-   local gconv = nn.SpatialConvolution(from,to,ki,kj,si,sj):cuda()
-   gconv.weight = sconv.weight:cuda()
-   gconv.bias = sconv.bias:cuda()
-   gconv:forward(input)
-   gconv:zeroGradParameters()
-   local rescuda = gconv:backward(input, gradOutput)
-   a:reset()
-   for i = 1,nloop do
-      gconv:zeroGradParameters()
-      rescuda = gconv:backward(input, gradOutput)
-   end
-   local weightcuda = gconv.gradWeight
-   local biascuda = gconv.gradBias
-   cutorch.synchronize()
-   tm.gpu = a:time().real
-
-   error = rescuda:float() - groundgrad
-   werror = weightcuda:float() - groundweight
-   berror = biascuda:float() - groundbias
-
-   mytester:assertlt(error:abs():max(), precision_backward, 'error on state (backward) ')
-   mytester:assertlt(werror:abs():max(), precision_backward, 'error on weight (backward) ')
-   mytester:assertlt(berror:abs():max(), precision_backward, 'error on bias (backward) ')
-end
-
 function cunntest.SpatialConvolutionMM_forward_single()
    local from = math.random(1,32)
    local to = math.random(1,8) * 8
    local ki = math.random(3,15)
-   local kj = ki
+   local kj = math.random(3,15)
    local si = 1 -- not supported by CPU version yet
    local sj = si
    local outi = math.random(1,64)
@@ -883,7 +749,7 @@ function cunntest.SpatialConvolutionMM_forward_batch()
    local from = math.random(1,32)
    local to = math.random(1,8) * 8
    local ki = math.random(3,15)
-   local kj = ki
+   local kj = math.random(3,15)
    local si = 1 -- not supported by CPU version yet
    local sj = si
    local outi = math.random(1,64)
@@ -921,12 +787,11 @@ function cunntest.SpatialConvolutionMM_forward_batch()
    mytester:assertlt(error:abs():max(), precision_forward, 'error on state (forward) ')
 end
 
---[[
 function cunntest.SpatialConvolutionMM_backward_single()
    local from = math.random(1,32)
    local to = math.random(1,8) * 8
    local ki = math.random(3,15)
-   local kj = ki
+   local kj = math.random(3,15)
    local si = 1 -- not supported by CPU version yet
    local sj = si
    local outi = math.random(1,64)
@@ -980,14 +845,13 @@ function cunntest.SpatialConvolutionMM_backward_single()
    mytester:assertlt(werror:abs():max(), precision_backward, 'error on weight (backward) ')
    mytester:assertlt(berror:abs():max(), precision_backward, 'error on bias (backward) ')
 end
-]]
 
 function cunntest.SpatialConvolutionMM_backward_batch()
    local bs = math.random(1,4) * 4
    local from = math.random(1,32)
    local to = math.random(1,8) * 8
    local ki = math.random(3,15)
-   local kj = ki
+   local kj = math.random(3,15)
    local si = 1 -- not supported by CPU version yet
    local sj = si
    local outi = math.random(1,64)
@@ -1416,8 +1280,8 @@ function cunntest.SpatialMaxPooling_forward()
    local to = from
    local ki = math.random(2,4)
    local kj = math.random(2,4)
-   local si = ki
-   local sj = kj
+   local si = math.random(1,4)
+   local sj = math.random(1,4)
    local outi = math.random(32,256)
    local outj = math.random(32,256)
    local ini = (outi-1)*si+ki
@@ -1460,8 +1324,8 @@ function cunntest.SpatialMaxPooling_forward_batch()
    local to = from
    local ki = math.random(2,4)
    local kj = math.random(2,4)
-   local si = ki
-   local sj = kj
+   local si = math.random(2,4)
+   local sj = math.random(2,4)
    local outi = math.random(32,256)
    local outj = math.random(32,256)
    local ini = (outi-1)*si+ki
@@ -1500,8 +1364,8 @@ function cunntest.SpatialMaxPooling_backward()
    local to = from
    local ki = math.random(2,4)
    local kj = math.random(2,4)
-   local si = ki
-   local sj = kj
+   local si = math.random(1,4)
+   local sj = math.random(1,4)
    local outi = math.random(32,64)
    local outj = math.random(32,64)
    local ini = (outi-1)*si+ki
@@ -1550,6 +1414,7 @@ function cunntest.SpatialMaxPooling_backward_batch()
    local to = from
    local ki = math.random(2,4)
    local kj = math.random(2,4)
+   -- enforce testing non-atomic kernel (dW == kW) and (dH == kH)
    local si = ki
    local sj = kj
    local outi = math.random(32,64)
@@ -1560,6 +1425,57 @@ function cunntest.SpatialMaxPooling_backward_batch()
    local tm = {}
    local title = string.format('SpatialMaxPooling.backward %dx%dx%dx%d o %dx%d -> %dx%dx%dx%d', 
                                bs, from, inj, ini, kj, ki, bs, to, outj, outi)
+   times[title] = tm
+
+   local input = torch.randn(bs,from,inj,ini)
+   local gradOutput = torch.randn(bs,to,outj,outi)
+   local sconv = nn.SpatialMaxPooling(ki,kj,si,sj)
+   sconv:forward(input)
+   sconv:zeroGradParameters()
+   local groundgrad = sconv:backward(input, gradOutput)
+   local a = torch.Timer()
+   for i = 1,nloop do
+      sconv:zeroGradParameters()
+      groundgrad = sconv:backward(input, gradOutput)
+   end
+   tm.cpu = a:time().real
+
+   input = input:cuda()
+   gradOutput = gradOutput:cuda()
+   local gconv = nn.SpatialMaxPooling(ki,kj,si,sj):cuda()
+   gconv:forward(input)
+   gconv:zeroGradParameters()
+   local rescuda = gconv:backward(input, gradOutput)
+   a:reset()
+   for i = 1,nloop do
+      gconv:zeroGradParameters()
+      rescuda = gconv:backward(input, gradOutput)
+   end
+   cutorch.synchronize()
+   tm.gpu = a:time().real
+
+   local error = rescuda:float() - groundgrad
+
+   mytester:assertlt(error:abs():max(), precision_backward, 'error on state (backward) ')
+end
+
+function cunntest.SpatialMaxPooling_backward_batch_atomic()
+   local bs = math.random(4,10)
+   local from = math.random(1,64)
+   local to = from
+   local ki = math.random(2,4)
+   local kj = math.random(2,4)
+   -- enforce that kW ~= dW or kH ~= dH (which trigers the atomic kernel)
+   local si = ki + ((math.random(0,1) == 1) and -math.random(1,ki-1) or math.random(1,2))
+   local sj = kj + ((math.random(0,1) == 1) and  -math.random(1,kj-1) or math.random(1,2))
+   local outi = math.random(32,64)
+   local outj = math.random(32,64)
+   local ini = (outi-1)*si+ki
+   local inj = (outj-1)*sj+kj
+
+   local tm = {}
+   local title = string.format('SpatialMaxPooling.backward %dx%dx%dx%d o %dx%d (%dx%d) -> %dx%dx%dx%d', 
+                               bs, from, inj, ini, kj, ki, si, sj, bs, to, outj, outi)
    times[title] = tm
 
    local input = torch.randn(bs,from,inj,ini)
@@ -1781,49 +1697,82 @@ function cunntest.SpatialLPPooling_backward()
 end
 
 function cunntest.mse()
-   local size = math.random(3000,5000)
-   local input = torch.randn(size,1,1)
-   local target = torch.randn(size)
-   local mod = nn.MSECriterion()
+   for sizeAverage = 0, 1 do
+      local size = math.random(3000,5000)
+      local input = torch.randn(size,1,1)
+      local target = torch.randn(size)
+      local mod = nn.MSECriterion(sizeAverage == 1)
 
-   local tm = {}
-   local title = string.format('MSECriterion %d ',size)
-   times[title] = tm
+      local tm = {}
+      local title = string.format('MSECriterion sizeAverage %d, %d ', sizeAverage, size)
+      times[title] = tm
 
-   local a = torch.Timer()
-   local fout = mod:forward(input,target)
-   local fgin = mod:backward(input,target):clone()
-   tm.cpu = a:time().real
+      local a = torch.Timer()
+      local fout = mod:forward(input,target)
+      local fgin = mod:backward(input,target):clone()
+      tm.cpu = a:time().real
 
-   local cinput = input:cuda()
-   local ctarget = target:cuda()
-   local cmod = nn.MSECriterion():cuda()
-   a:reset()
-   local cout = cmod:forward(cinput,ctarget)
-   local cgin = cmod:backward(cinput,ctarget)
-   cutorch.synchronize()
-   tm.gpu = a:time().real
+      local cinput = input:cuda()
+      local ctarget = target:cuda()
+      local cmod = nn.MSECriterion(sizeAverage == 1):cuda()
+      a:reset()
+      local cout = cmod:forward(cinput,ctarget)
+      local cgin = cmod:backward(cinput,ctarget)
+      cutorch.synchronize()
+      tm.gpu = a:time().real
 
-   local tm2 = {}
-   local title = string.format('MSECriterion2 %d ',size)
-   times[title] = tm2
-   tm2.cpu = tm.cpu
-   local cinput2 = input:cuda()
-   local ctarget2 = target:cuda()
-   local cmod2 = nn.MSECriterion():cuda()
-   a:reset()
-   local cout2 = cinput2.nn.MSECriterion_updateOutput2(cmod,cinput2,ctarget2)
-   local cgin2 = cinput2.nn.MSECriterion_updateGradInput2(cmod,cinput2,ctarget2)
-   cutorch.synchronize()
-   tm2.gpu = a:time().real
+      local tm2 = {}
+      local title = string.format('MSECriterion2 sizeAverage %d, %d ',sizeAverage, size)
+      times[title] = tm2
+      tm2.cpu = tm.cpu
+      local cinput2 = input:cuda()
+      local ctarget2 = target:cuda()
+      local cmod2 = nn.MSECriterion(sizeAverage == 1):cuda()
+      a:reset()
+      local cout2 = cinput2.nn.MSECriterion_updateOutput2(cmod,cinput2,ctarget2)
+      local cgin2 = cinput2.nn.MSECriterion_updateGradInput2(cmod,cinput2,ctarget2)
+      cutorch.synchronize()
+      tm2.gpu = a:time().real
 
-   mytester:assertlt(math.abs(fout-cout), precision_forward, 'error  on output')
-   local gerr = cgin:float() - fgin
-   mytester:assertlt(gerr:abs():max(), precision_forward, 'error  on gradInput')
+      mytester:assertlt(math.abs(fout-cout), precision_forward, 'error  on output')
+      local gerr = cgin:float() - fgin
+      mytester:assertlt(gerr:abs():max(), precision_forward, 'error  on gradInput')
 
-   mytester:assertlt(math.abs(fout-cout2), precision_forward, 'error  on output - 2')
-   local gerr2 = cgin2:float() - fgin
-   mytester:assertlt(gerr2:abs():max(), precision_forward, 'error  on gradInput -2')
+      mytester:assertlt(math.abs(fout-cout2), precision_forward, 'error  on output - 2')
+      local gerr2 = cgin2:float() - fgin
+      mytester:assertlt(gerr2:abs():max(), precision_forward, 'error  on gradInput -2')
+   end
+end
+
+function cunntest.distkldiv()
+   for sizeAverage = 0, 1 do
+      local size = math.random(3000,5000)
+      local input = torch.randn(size,1,1)
+      local target = torch.randn(size)
+      local mod = nn.DistKLDivCriterion(sizeAverage == 1)
+
+      local tm = {}
+      local title = string.format('DistKLDivCriterion sizeAverage %d, %d ',sizeAverage,size)
+      times[title] = tm
+
+      local a = torch.Timer()
+      local fout = mod:forward(input,target)
+      local fgin = mod:backward(input,target):clone()
+      tm.cpu = a:time().real
+
+      local cinput = input:cuda()
+      local ctarget = target:cuda()
+      local cmod = nn.DistKLDivCriterion(sizeAverage == 1):cuda()
+      a:reset()
+      local cout = cmod:forward(cinput,ctarget)
+      local cgin = cmod:backward(cinput,ctarget)
+      cutorch.synchronize()
+      tm.gpu = a:time().real
+
+      mytester:assertlt(math.abs(fout-cout), precision_forward, 'error  on output')
+      local gerr = cgin:float() - fgin
+      mytester:assertlt(gerr:abs():max(), precision_backward, 'error  on gradInput')
+   end
 end
 
 function cunntest.SoftMax_forward()
